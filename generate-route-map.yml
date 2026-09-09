@@ -1,0 +1,73 @@
+name: Generate Route Map
+
+# Two ways to fire this:
+#  1. repository_dispatch — called from the admin app's "Generate Route Map"
+#     button (Apps Script hits the GitHub API with event_type: generate_route_map)
+#  2. workflow_dispatch — manual "Run workflow" button in the GitHub UI, for
+#     testing or ad-hoc runs without going through the admin app.
+on:
+  repository_dispatch:
+    types: [generate_route_map]
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Date to process (yyyy-MM-dd)"
+        required: true
+      user_id:
+        description: "UserID, or ALL for every user with logs that date"
+        required: false
+        default: "ALL"
+
+permissions:
+  contents: write
+
+jobs:
+  build-route-map:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write Google service account credentials
+        run: echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > /tmp/gcp-sa.json
+
+      - name: Resolve trigger inputs
+        id: params
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "date=${{ github.event.client_payload.date }}" >> "$GITHUB_OUTPUT"
+            echo "user_id=${{ github.event.client_payload.userId }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "date=${{ github.event.inputs.date }}" >> "$GITHUB_OUTPUT"
+            echo "user_id=${{ github.event.inputs.user_id }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate route map(s)
+        env:
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-sa.json
+          PAGES_BASE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+        run: |
+          python scripts/generate_route_map.py \
+            --date "${{ steps.params.outputs.date }}" \
+            --user-id "${{ steps.params.outputs.user_id || 'ALL' }}"
+
+      - name: Commit and push generated images
+        run: |
+          git config user.name "route-map-bot"
+          git config user.email "route-map-bot@users.noreply.github.com"
+          git add docs/routes
+          if ! git diff --cached --quiet; then
+            git commit -m "Route map: ${{ steps.params.outputs.user_id || 'ALL' }} ${{ steps.params.outputs.date }}"
+            git push
+          else
+            echo "No image changes to commit."
+          fi

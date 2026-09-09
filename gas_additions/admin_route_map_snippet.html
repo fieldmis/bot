@@ -1,0 +1,80 @@
+<!--
+  ROUTE MAP PANEL — paste into admin.html wherever the other admin
+  panels/tabs live. Adjust CONFIG.API_URL to whatever variable your
+  admin.html already uses for the Apps Script Web App URL, and restyle
+  the classes to match your existing CSS.
+-->
+<div class="admin-panel" id="routeMapPanel">
+  <h3>Route Map</h3>
+
+  <div class="route-map-controls">
+    <input type="text" id="rmUserId" placeholder="UserID (blank = ALL users)" />
+    <input type="date" id="rmDate" />
+    <button id="rmGenerateBtn" onclick="generateRouteMap()">Generate Route Map</button>
+  </div>
+  <div id="rmStatus" style="margin-top:8px;font-size:0.9em;color:#555;"></div>
+
+  <div class="route-map-gallery" id="rmGallery" style="margin-top:16px;display:flex;flex-wrap:wrap;gap:12px;"></div>
+  <button id="rmRefreshBtn" onclick="loadRouteMaps()">Refresh List</button>
+</div>
+
+<script>
+  // Default the date picker to today
+  document.getElementById('rmDate').valueAsDate = new Date();
+
+  function generateRouteMap() {
+    const userId = document.getElementById('rmUserId').value.trim() || 'ALL';
+    const date = document.getElementById('rmDate').value;
+    const statusEl = document.getElementById('rmStatus');
+    if (!date) { statusEl.textContent = 'Pick a date first.'; return; }
+
+    statusEl.textContent = 'Starting generation...';
+    fetch(CONFIG.API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'triggerRouteMap', payload: { userId, date } })
+    })
+      .then(r => r.json())
+      .then(res => {
+        statusEl.textContent = res.message || (res.ok ? 'Started.' : 'Failed to start.');
+        if (res.ok) {
+          // Poll a few times — the GitHub Action typically finishes in 30-90s
+          let attempts = 0;
+          const poll = setInterval(() => {
+            attempts++;
+            loadRouteMaps();
+            if (attempts >= 6) clearInterval(poll); // ~3 minutes of polling
+          }, 30000);
+        }
+      })
+      .catch(err => { statusEl.textContent = 'Error: ' + err; });
+  }
+
+  function loadRouteMaps() {
+    const userId = document.getElementById('rmUserId').value.trim();
+    fetch(CONFIG.API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'getRouteMaps', payload: { userId } })
+    })
+      .then(r => r.json())
+      .then(res => {
+        const gallery = document.getElementById('rmGallery');
+        gallery.innerHTML = '';
+        (res.rows || []).forEach(row => {
+          const card = document.createElement('div');
+          card.style.cssText = 'width:260px;border:1px solid #ddd;border-radius:8px;overflow:hidden;';
+          card.innerHTML = `
+            <a href="${row.imageUrl}" target="_blank">
+              <img src="${row.imageUrl}" style="width:100%;display:block;" loading="lazy" />
+            </a>
+            <div style="padding:8px;font-size:0.85em;">
+              <strong>${row.userId}</strong> &middot; ${row.date}<br/>
+              ${row.distanceKm} km &middot; ${row.points} points
+            </div>`;
+          gallery.appendChild(card);
+        });
+      });
+  }
+
+  // Load existing maps on page load
+  loadRouteMaps();
+</script>
