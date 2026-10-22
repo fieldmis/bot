@@ -75,7 +75,19 @@ def open_sheet():
 
 def load_location_logs(spreadsheet):
     ws = spreadsheet.worksheet("LocationLogs")
-    records = ws.get_all_records()  # list of dicts keyed by header row
+    values = ws.get_all_values()
+    if not values:
+        return []
+    headers = [str(h).strip() for h in values[0]]
+    # Keep only the first occurrence of each non-blank header name,
+    # so blank or duplicate header cells can't break the read.
+    keep = {}
+    for idx, h in enumerate(headers):
+        if h and h not in keep:
+            keep[h] = idx
+    records = []
+    for row in values[1:]:
+        records.append({h: (row[i] if i < len(row) else "") for h, i in keep.items()})
     return records
 
 
