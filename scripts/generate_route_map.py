@@ -35,6 +35,7 @@ import html
 import json
 import math
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -339,8 +340,16 @@ def build_map_page(points, geometry, distance_km, user_id, date_str, status_note
 def process_user_day(records, user_id, date_str, pages_base_url):
     points = points_for(records, user_id, date_str)
     if len(points) < 2:
-        print(f"  [skip] {user_id} {date_str}: only {len(points)} valid point(s), need >= 2")
-        return None
+        msg = f"only {len(points)} valid point(s), need 2 or more"
+        print(f"  [skip] {user_id} {date_str}: {msg}")
+        return {
+            "user_id": user_id,
+            "date": date_str,
+            "distance_km": 0.0,
+            "point_count": len(points),
+            "map_url": "",
+            "status": f"skipped: {msg}",
+        }
 
     points_latlon = [(float(p["Lat"]), float(p["Lng"])) for p in points]
     coords_lonlat = [(lon, lat) for lat, lon in points_latlon]
@@ -375,7 +384,8 @@ def process_user_day(records, user_id, date_str, pages_base_url):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--date", required=True, help="yyyy-MM-dd")
-    parser.add_argument("--user-id", default="ALL", help="UserID, or ALL for every user with logs that date")
+    parser.add_argument("--user-id", default="ALL",
+                        help="UserID, a comma-separated list (D1,D2,D3), or ALL for every user with logs that date")
     args = parser.parse_args()
 
     pages_base_url = os.environ.get("PAGES_BASE_URL", "").strip()
@@ -387,29 +397,50 @@ def main():
     records = load_location_logs(spreadsheet)
     routemaps_ws = get_or_create_routemaps_sheet(spreadsheet)
 
-    if args.user_id.upper() == "ALL":
-        user_ids = distinct_users_for_date(records, args.date)
+    requested = [u.strip() for u in args.user_id.split(",") if u.strip()]
+    if not requested or any(u.upper() == "ALL" for u in requested):
+        user_ids = [u for u in distinct_users_for_date(records, args.date) if u]
         print(f"Processing ALL users for {args.date}: {user_ids}")
     else:
-        user_ids = [args.user_id]
+        user_ids = []
+        for u in requested:
+            if not re.fullmatch(r"[A-Za-z0-9_\-]+", u):
+                print(f"  [skip] ignoring invalid UserID {u!r}")
+                continue
+            if u not in user_ids:
+                user_ids.append(u)
+        print(f"Processing {len(user_ids)} selected user(s) for {args.date}: {user_ids}")
+        if not user_ids:
+            print("ERROR: none of the supplied UserIDs were valid.", file=sys.stderr)
+            sys.exit(1)
 
-    results = []
+    if not user_ids:
+        seen = sorted({norm_date(r.get("Date", "")) for r in records if norm_date(r.get("Date", ""))})
+        print(f"ERROR: no LocationLogs rows found for date '{args.date}'.", file=sys.stderr)
+        print(f"       Dates present in the sheet (last 10): {seen[-10:]}", file=sys.stderr)
+        print("       Date must match the sheet's Date column exactly, e.g. 2026-10-21.", file=sys.stderr)
+        sys.exit(1)
+
+    generated = 0
     for uid in user_ids:
         result = process_user_day(records, uid, args.date, pages_base_url)
-        if result:
-            upsert_route_row(
-                routemaps_ws,
-                result["user_id"],
-                result["date"],
-                result["distance_km"],
-                result["point_count"],
-                result["map_url"],
-                result["status"],
-            )
-            results.append(result)
+        upsert_route_row(
+            routemaps_ws,
+            result["user_id"],
+            result["date"],
+            result["distance_km"],
+            result["point_count"],
+            result["map_url"],
+            result["status"],
+        )
+        if result["map_url"]:
+            generated += 1
         time.sleep(1)  # be polite to the public OSRM server
 
-    print(f"\nDone. Generated {len(results)} route map(s).")
+    print(f"\nDone. Generated {generated} map page(s) out of {len(user_ids)} user(s).")
+    if generated == 0:
+        print("ERROR: nothing was generated - see the [skip] lines above for the reason.", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

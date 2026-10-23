@@ -31,8 +31,14 @@ function handleTriggerRouteMap(p) {
   if (!token || !owner || !repo) {
     return { ok: false, message: 'GITHUB_TOKEN / GITHUB_OWNER / GITHUB_REPO script properties not set.' };
   }
-  if (!p.date) {
-    return { ok: false, message: 'A date (yyyy-MM-dd) is required.' };
+  const date = String(p.date || '').trim();
+  const userId = String(p.userId || 'ALL').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return { ok: false, message: 'A date in yyyy-MM-dd format is required.' };
+  }
+  // 'ALL' or a comma-separated list of UserIDs, e.g. D91689,D69561 (letters, digits, _ and - only)
+  if (!/^[A-Za-z0-9_,\-]{1,4000}$/.test(userId)) {
+    return { ok: false, message: 'Invalid user list.' };
   }
 
   const url = `https://api.github.com/repos/${owner}/${repo}/dispatches`;
@@ -46,8 +52,8 @@ function handleTriggerRouteMap(p) {
     payload: JSON.stringify({
       event_type: 'generate_route_map',
       client_payload: {
-        userId: p.userId || 'ALL',
-        date: p.date
+        userId: userId,
+        date: date
       }
     }),
     muteHttpExceptions: true
@@ -77,14 +83,19 @@ function handleGetRouteMaps(p) {
   const genCol = findCol(headers, ['generatedat', 'generated at']);
   const statusCol = findCol(headers, ['status']);
 
+  // Sheets can hand back real Date objects for date-looking cells; normalise to text
+  // so the admin app always receives 'yyyy-MM-dd' and an ISO timestamp.
+  const tz = Session.getScriptTimeZone();
+  const fmt = (v, pattern) => (v instanceof Date ? Utilities.formatDate(v, tz, pattern) : v);
+
   let rows = data.map(row => ({
     userId: row[uidCol],
-    date: row[dateCol],
+    date: fmt(row[dateCol], 'yyyy-MM-dd'),
     distanceKm: row[kmCol],
     points: row[ptsCol],
     mapUrl: row[urlCol],
     imageUrl: row[urlCol], // kept so older admin-app code keeps working; this is now a map PAGE link
-    generatedAt: row[genCol],
+    generatedAt: fmt(row[genCol], "yyyy-MM-dd'T'HH:mm:ssXXX"),
     status: statusCol !== -1 ? row[statusCol] : ''
   }));
 
