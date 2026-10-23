@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>D73116 • 2026-10-21 • 0.0 km</title>
+<link rel="stylesheet" href="../../vendor/leaflet/leaflet.css">
+<style>
+  html, body { height: 100%; margin: 0; font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #bar { flex: 0 0 auto; background: #1a202c; color: #fff; padding: 8px 12px;
+         padding-top: max(8px, env(safe-area-inset-top)); font-size: 14px; line-height: 1.35; }
+  #bar b { font-size: 15px; }
+  #bar .sub { opacity: .8; font-size: 12px; }
+  #map { flex: 1 1 auto; min-height: 0; }
+  .pin { width: 28px; height: 28px; border-radius: 50%; border: 3px solid #fff; color: #fff;
+         font-weight: 700; font-size: 13px; line-height: 22px; text-align: center;
+         box-shadow: 0 1px 5px rgba(0,0,0,.45); box-sizing: border-box; }
+  .pop-t { color: #555; font-size: 12px; margin-top: 2px; }
+  .pop-a { margin-top: 4px; }
+  #fit { position: absolute; z-index: 1000; right: 10px; bottom: calc(24px + env(safe-area-inset-bottom));
+         background: #fff; border: 2px solid rgba(0,0,0,.25); border-radius: 6px; padding: 8px 10px;
+         font-size: 13px; font-weight: 600; }
+</style>
+</head>
+<body>
+<div id="bar"></div>
+<div id="map"></div>
+<button id="fit" type="button">Fit route</button>
+<script src="../../vendor/leaflet/leaflet.js"></script>
+<script>
+(function () {
+  var D = {"userId":"D73116","date":"2026-10-21","distanceKm":0.0,"note":"","points":[{"lat":17.46418,"lng":78.482696,"time":"2026-10-21T15:50:32.798Z","address":"Padmavathi Colony, Gunrock Enclave, Tirumalagiri mandal, Hyderabad, Telangana, 500011, India"},{"lat":17.464184,"lng":78.482708,"time":"2026-10-21T15:50:44.975Z","address":"Padmavathi Colony, Gunrock Enclave, Tirumalagiri mandal, Hyderabad, Telangana, 500011, India"}],"route":[[78.4826,17.46415],[78.4826,17.46415]]};
+
+  var bar = document.getElementById('bar');
+  var title = document.createElement('div');
+  var b = document.createElement('b');
+  b.textContent = D.userId + '  •  ' + D.date;
+  title.appendChild(b);
+  var sub = document.createElement('div');
+  sub.className = 'sub';
+  sub.textContent = D.distanceKm.toFixed(1) + ' km  •  ' + D.points.length + ' points' +
+                    (D.note ? '  (' + D.note + ')' : '');
+  bar.appendChild(title);
+  bar.appendChild(sub);
+
+  var map = L.map('map', { zoomControl: true, maxZoom: 19 });
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors — route via OSRM'
+  }).addTo(map);
+
+  var all = [];
+  if (D.route.length >= 2) {
+    var latlngs = D.route.map(function (c) { return [c[1], c[0]]; });
+    L.polyline(latlngs, { color: '#2b6cb0', weight: 5, opacity: 0.85 }).addTo(map);
+    all = all.concat(latlngs);
+  }
+
+  var n = D.points.length;
+  D.points.forEach(function (p, i) {
+    var num = i + 1;
+    var color = num === 1 ? '#22a34d' : (num === n ? '#d92b2b' : '#2b6cb0');
+    var icon = L.divIcon({
+      className: '',
+      html: '<div class="pin" style="background:' + color + '">' + num + '</div>',
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+      popupAnchor: [0, -14]
+    });
+    var m = L.marker([p.lat, p.lng], {
+      icon: icon,
+      zIndexOffset: (num === 1 || num === n) ? 1000 : 0
+    }).addTo(map);
+
+    var box = document.createElement('div');
+    var h = document.createElement('b');
+    h.textContent = '#' + num + (num === 1 ? ' (start)' : (num === n ? ' (end)' : ''));
+    box.appendChild(h);
+    if (p.time) {
+      var t = document.createElement('div');
+      t.className = 'pop-t';
+      t.textContent = p.time;
+      box.appendChild(t);
+    }
+    if (p.address) {
+      var a = document.createElement('div');
+      a.className = 'pop-a';
+      a.textContent = p.address;
+      box.appendChild(a);
+    }
+    m.bindPopup(box);
+    all.push([p.lat, p.lng]);
+  });
+
+  function fit() {
+    if (all.length) { map.fitBounds(L.latLngBounds(all), { padding: [30, 30] }); }
+    else { map.setView([20.5937, 78.9629], 5); }
+  }
+  fit();
+  document.getElementById('fit').addEventListener('click', fit);
+})();
+</script>
+</body>
+</html>
