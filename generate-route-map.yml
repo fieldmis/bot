@@ -60,14 +60,14 @@ jobs:
             --date "${{ steps.params.outputs.date }}" \
             --user-id "${{ steps.params.outputs.user_id || 'ALL' }}"
 
-      - name: Commit and push generated images
+      - name: Commit and push generated map pages
         run: |
           git config user.name "route-map-bot"
           git config user.email "route-map-bot@users.noreply.github.com"
-          git add docs/routes
+          git add docs
           if ! git diff --cached --quiet; then
             git commit -m "Route map: ${{ steps.params.outputs.user_id || 'ALL' }} ${{ steps.params.outputs.date }}"
             git push
           else
-            echo "No image changes to commit."
+            echo "No map changes to commit."
           fi

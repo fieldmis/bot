@@ -1,14 +1,16 @@
 # SHELL FOS — Route Map Generator
 
-Generates a per-user, per-day, road-following route map (PNG) from your
+Generates a per-user, per-day, road-following interactive route map page from your
 `LocationLogs` sheet, triggered by a button in your existing admin app.
 
 **Flow:** Admin clicks "Generate Route Map" -> Apps Script calls GitHub's
 API -> GitHub Actions runs a Python job that reads `LocationLogs`, routes
-the day's points through OSRM (real roads, real km), draws a numbered
-map, commits it to `docs/routes/<UserID>/<date>.png`, and logs the
-result to a new `RouteMaps` sheet tab -> your admin app polls that tab
-and shows the image.
+the day's points through OSRM (real roads, real km), builds a numbered
+interactive map page (Leaflet + OpenStreetMap), commits it to
+`docs/routes/<UserID>/<date>.html`, and logs the link to a new
+`RouteMaps` sheet tab -> your admin app polls that tab and shows an
+"Open route map" button. The page works on a phone: pinch to zoom, drag
+to pan, tap a pin to see its time and address.
 
 No paid APIs. No servers to run — GitHub Actions + GitHub Pages host
 everything.
@@ -21,8 +23,10 @@ Commit `.github/workflows/`, `scripts/`, `requirements.txt`, and the
 ## 2. Enable GitHub Pages
 
 Repo Settings → Pages → Source: **Deploy from a branch** → Branch:
-`main`, folder: **/docs**. Save. Your images will then be reachable at
-`https://<owner>.github.io/<repo>/routes/<UserID>/<date>.png`.
+`main`, folder: **/docs**. Save. Your map pages will then be reachable at
+`https://<owner>.github.io/<repo>/routes/<UserID>/<date>.html`.
+(The Leaflet library the pages use is bundled in `docs/vendor/leaflet/`,
+so make sure that folder is committed too.)
 
 ## 3. Create a Google service account and share the Sheet with it
 
@@ -84,8 +88,12 @@ refresh.
   automatically excluded from the route.
 - If OSRM can't find a road route for a given set of points (rare — e.g.
   points too far apart or across water), the script falls back to a
-  straight-line route and labels the image "approx, straight-line" so
+  straight-line route and labels the page "approx, straight-line" so
   it's never silently wrong.
-- Image size is 1600×1200 by default — edit `IMG_WIDTH`/`IMG_HEIGHT` in
-  `scripts/generate_route_map.py` for a different resolution.
+- Map tiles are loaded live by the viewer's browser from OpenStreetMap's
+  public tile server, so the page needs an internet connection to show the
+  basemap. Fine for internal use; for heavy public traffic use a
+  tile provider with a key.
+- Old `.png` maps already in `docs/routes/` are left as they are; the
+  admin snippet still displays them.
 - `RouteMaps` sheet tab is auto-created on first run.
