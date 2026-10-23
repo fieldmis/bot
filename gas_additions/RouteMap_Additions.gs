@@ -18,7 +18,7 @@
  *
  * The RouteMaps sheet tab is auto-created by the Python script the first
  * time it runs, with headers: UserID | Date | DistanceKm | PointCount |
- * ImageURL | GeneratedAt | Status
+ * MapURL | GeneratedAt | Status
  */
 
 /* ---------------- TRIGGER: kicks off the GitHub Action ---------------- */
@@ -73,7 +73,7 @@ function handleGetRouteMaps(p) {
   const dateCol = findCol(headers, ['date']);
   const kmCol = findCol(headers, ['distancekm', 'distance km', 'distance']);
   const ptsCol = findCol(headers, ['pointcount', 'points']);
-  const urlCol = findCol(headers, ['imageurl', 'image url']);
+  const urlCol = findCol(headers, ['mapurl', 'map url', 'imageurl', 'image url']);
   const genCol = findCol(headers, ['generatedat', 'generated at']);
   const statusCol = findCol(headers, ['status']);
 
@@ -82,7 +82,8 @@ function handleGetRouteMaps(p) {
     date: row[dateCol],
     distanceKm: row[kmCol],
     points: row[ptsCol],
-    imageUrl: row[urlCol],
+    mapUrl: row[urlCol],
+    imageUrl: row[urlCol], // kept so older admin-app code keeps working; this is now a map PAGE link
     generatedAt: row[genCol],
     status: statusCol !== -1 ? row[statusCol] : ''
   }));

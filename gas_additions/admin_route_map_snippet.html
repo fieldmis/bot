@@ -62,10 +62,15 @@
         (res.rows || []).forEach(row => {
           const card = document.createElement('div');
           card.style.cssText = 'width:260px;border:1px solid #ddd;border-radius:8px;overflow:hidden;';
+          const url = row.mapUrl || row.imageUrl || '';
+          const isOldImage = /\.png(\?|$)/i.test(url); // rows generated before the interactive-map change
+          const top = isOldImage
+            ? `<a href="${url}" target="_blank"><img src="${url}" style="width:100%;display:block;" loading="lazy" /></a>`
+            : `<a href="${url}" target="_blank"
+                  style="display:block;padding:22px 8px;text-align:center;background:#2b6cb0;color:#fff;
+                         text-decoration:none;font-weight:600;">&#128205; Open route map</a>`;
           card.innerHTML = `
-            <a href="${row.imageUrl}" target="_blank">
-              <img src="${row.imageUrl}" style="width:100%;display:block;" loading="lazy" />
-            </a>
+            ${top}
             <div style="padding:8px;font-size:0.85em;">
               <strong>${row.userId}</strong> &middot; ${row.date}<br/>
               ${row.distanceKm} km &middot; ${row.points} points
