@@ -38,7 +38,7 @@ import os
 import re
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 import gspread
@@ -198,6 +198,46 @@ def fallback_straight_line(points_latlon):
 
 
 # ---------------------------------------------------------------------------
+# Time helpers (IST display + gap between consecutive points)
+# ---------------------------------------------------------------------------
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def parse_log_time(value):
+    """LocationLogs 'Time' cells look like 2026-10-30T03:48:29.733Z (UTC).
+    Returns an aware datetime, or None if the text can't be parsed.
+    A value with no timezone marker is treated as UTC, matching the app."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def format_ist(dt):
+    return dt.astimezone(IST).strftime("%d %b %Y, %I:%M:%S %p IST")
+
+
+def format_gap(delta):
+    """timedelta -> '1h 52m', '4m 36s' or '12s'. Empty string if negative."""
+    total = int(delta.total_seconds())
+    if total < 0:
+        return ""
+    hours, rem = divmod(total, 3600)
+    minutes, seconds = divmod(rem, 60)
+    if hours:
+        return f"{hours}h {minutes}m"
+    if minutes:
+        return f"{minutes}m {seconds}s"
+    return f"{seconds}s"
+
+
+# ---------------------------------------------------------------------------
 # Rendering
 # ---------------------------------------------------------------------------
 PAGE_TEMPLATE = """<!DOCTYPE html>
@@ -219,6 +259,7 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
          font-weight: 700; font-size: 13px; line-height: 22px; text-align: center;
          box-shadow: 0 1px 5px rgba(0,0,0,.45); box-sizing: border-box; }
   .pop-t { color: #555; font-size: 12px; margin-top: 2px; }
+  .pop-d { color: #2b6cb0; font-size: 12px; font-weight: 600; margin-top: 2px; }
   .pop-a { margin-top: 4px; }
   #fit { position: absolute; z-index: 1000; right: 10px; bottom: calc(24px + env(safe-area-inset-bottom));
          background: #fff; border: 2px solid rgba(0,0,0,.25); border-radius: 6px; padding: 8px 10px;
@@ -285,6 +326,12 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
       t.textContent = p.time;
       box.appendChild(t);
     }
+    if (p.sincePrev) {
+      var d = document.createElement('div');
+      d.className = 'pop-d';
+      d.textContent = 'Since previous point: ' + p.sincePrev;
+      box.appendChild(d);
+    }
     if (p.address) {
       var a = document.createElement('div');
       a.className = 'pop-a';
@@ -308,6 +355,30 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
 """
 
 
+def point_payload(points):
+    """Per-point data for the page: coordinates, address, the time shown in
+    IST, and the gap since the previous point (blank for the first point)."""
+    out = []
+    prev_dt = None
+    for p in points:
+        dt = parse_log_time(p.get("Time", ""))
+        if dt is not None:
+            time_text = format_ist(dt)
+            gap = format_gap(dt - prev_dt) if prev_dt is not None else ""
+            prev_dt = dt
+        else:
+            time_text = str(p.get("Time", "") or "")  # unparseable: show as-is
+            gap = ""
+        out.append({
+            "lat": round(float(p["Lat"]), 6),
+            "lng": round(float(p["Lng"]), 6),
+            "time": time_text,
+            "sincePrev": gap,
+            "address": str(p.get("Address", "") or ""),
+        })
+    return out
+
+
 def build_map_page(points, geometry, distance_km, user_id, date_str, status_note=""):
     """points: list of dicts with Lat/Lng/Address/Time, in visit order.
     geometry: list of [lon, lat] describing the route line to draw.
@@ -317,15 +388,7 @@ def build_map_page(points, geometry, distance_km, user_id, date_str, status_note
         "date": str(date_str),
         "distanceKm": round(float(distance_km), 3),
         "note": status_note,
-        "points": [
-            {
-                "lat": round(float(p["Lat"]), 6),
-                "lng": round(float(p["Lng"]), 6),
-                "time": str(p.get("Time", "") or ""),
-                "address": str(p.get("Address", "") or ""),
-            }
-            for p in points
-        ],
+        "points": point_payload(points),
         "route": [[round(lon, 5), round(lat, 5)] for lon, lat in geometry],
     }
     # "</" must not appear raw inside an inline <script> (e.g. from an address field)
